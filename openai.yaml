@@ -1,0 +1,1408 @@
+openapi: 3.1.0
+info:
+  title: LazyDeve Agent API
+  version: "1.5.0"
+  description: >
+    LazyDeve – autonomous development agent (Git-integrated).
+    Endpoints for ChatGPT Apps integration and automated AI workflows.
+
+x-initialization:
+  description: "Auto-initialization protocol for LazyDeve Agent"
+  trigger: "on_first_message"
+  sequence:
+    - /ping-agent
+    - /status
+    - /commits
+    - /logs
+    - /projects/list
+    - /projects/active
+  note: |
+    The agent automatically validates its health and readiness on first request.
+    All subsequent requests benefit from pre-validated system state and project context.
+    
+    ⚠️ All endpoints operate within the active project folder automatically.
+    Use relative paths (e.g., "README.md") - the system auto-injects "projects/{active_project}/".
+    For full route documentation, see: GET /openapi.yaml
+    
+    📌 ENDPOINT SELECTION GUIDE:
+    - /update-file: Use when you have EXACT file content ready (create/edit files directly)
+    - /execute: Use for AI-powered tasks (refactoring, code generation, deletions)
+    - Simple rule: If you know the exact content → /update-file, If you need AI → /execute
+    - Format preference: Use minimal format {"task": "..."} unless you need to override defaults
+
+servers:
+  - url: https://agent.lazydeve.uk
+    description: Production server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Success:
+      type: object
+      description: Generic success payload
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: Operation completed successfully
+        data:
+          type: object
+          additionalProperties: true
+    Error:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          example: Something went wrong
+
+paths:
+  /ping-agent:
+    get:
+      summary: Check if agent is online
+      operationId: pingAgent
+      responses:
+        "200":
+          description: Agent online confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /status:
+    get:
+      summary: Get Git repository status and agent freshness
+      operationId: getStatus
+      responses:
+        "200":
+          description: Status info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /commits:
+    get:
+      summary: Retrieve recent Git commit history
+      operationId: getCommits
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 5
+      responses:
+        "200":
+          description: Commit history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /list-files:
+    get:
+      summary: List files in project directory
+      operationId: listFiles
+      parameters:
+        - name: directory
+          in: query
+          schema:
+            type: string
+            default: "."
+      responses:
+        "200":
+          description: File listing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /execute:
+    post:
+      summary: Execute AI-assisted development tasks via Aider CLI
+      description: >
+        AI-powered operations: refactoring, code generation, deletions, and complex multi-file edits.
+        
+        📌 **DECISION RULE:**
+        - If you already know the exact file content → use /update-file  
+        - If you need AI to generate, refactor, or modify code → use /execute
+        
+        ⚠️ **FILE PROTECTION:**
+        - Explicit commands like "create file X" are automatically redirected to /update-file  
+        - Aider may still create files as part of AI-generated tasks (this is allowed)
+        - Explicit natural-language edit commands targeting exact file content (e.g., "update file X with Y") redirect to /update-file
+        
+        📌 **USE /execute FOR:**
+        - Refactoring or improving existing code  
+        - Generating new modules or features  
+        - Deleting one or more files  
+        - Coordinated multi-file changes
+        
+        📌 **USE /update-file FOR:**
+        - Creating a file when you already have its full content  
+        - Replacing file text directly (no AI reasoning)
+        
+        ⚠️ **REQUIREMENTS:**
+        - Active project must be set (returns 400 if not)
+        - "task" field is REQUIRED (or use "prompt"/"instruction" as aliases)
+        - All changes are automatically committed after execution
+        
+        📦 **FORMAT:** {"task": "description"}  
+        Optional fields: *files*, *project*, *model*.
+        
+        🧪 **EXAMPLES:**
+        - {"task": "Refactor authentication to use JWT"}  
+        - {"task": "Add logging to all API endpoints"}  
+        - {"task": "Delete old_config.py"}  
+        - {"task": "Generate a new API endpoint", "files": ["routes/users.py"]}
+      operationId: executeTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["task"]
+              properties:
+                task:
+                  type: string
+                  description: Natural language task description (REQUIRED)
+                  example: "Add logging to the authentication module"
+                prompt:
+                  type: string
+                  description: Alias for 'task' parameter (optional - use 'task' instead)
+                instruction:
+                  type: string
+                  description: Alias for 'task' parameter (optional - use 'task' instead)
+                model:
+                  type: string
+                  description: LLM model to use (OPTIONAL - auto-selected if not provided)
+                  default: "gpt-4o-mini"
+                  enum: ["gpt-4o", "gpt-4o-mini", "claude-3-5-sonnet", "gemini-pro"]
+                files:
+                  type: array
+                  description: Specific files to include in Aider context (OPTIONAL)
+                  items:
+                    type: string
+                  example: ["src/auth.py", "tests/test_auth.py"]
+                project:
+                  type: string
+                  description: Target project name (OPTIONAL - uses active project if not provided)
+                  example: "LazyDeve"
+                commit:
+                  type: boolean
+                  description: Auto-commit flag (OPTIONAL - currently not implemented, changes always committed)
+                  default: true
+      responses:
+        "200":
+          description: Task executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        "400":
+          description: Invalid task, wrong endpoint for action, or file operation detected (redirects to /update-file)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /analyze-code:
+    post:
+      summary: Analyze project source code
+      description: AI-assisted or static code analysis for issues, complexity metrics, and code style feedback.
+      operationId: analyzeCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target:
+                  type: string
+                  example: "projects/LazyDeve/core/"
+                mode:
+                  type: string
+                  enum: [ai, static]
+                  default: ai
+          text/plain:
+            schema:
+              type: string
+              example: "projects/LazyDeve/core/"
+      responses:
+        "200":
+          description: Code analysis result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /run-tests:
+    post:
+      summary: Run automated tests
+      description: Executes unit or integration tests from specified directory and returns summarized results.
+      operationId: runTests
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope:
+                  type: string
+                  example: "tests/"
+                filter:
+                  type: string
+                  example: "test_ping_agent"
+          text/plain:
+            schema:
+              type: string
+              example: "tests/"
+      responses:
+        "200":
+          description: Test run summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /read-file:
+    post:
+      summary: Read file content
+      operationId: readFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                path:
+                  type: string
+                  example: "core/config.py"
+          text/plain:
+            schema:
+              type: string
+              example: "./agent.py"
+      responses:
+        "200":
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /update-file:
+    post:
+      summary: Create or update a file with exact content
+      description: >
+        Direct file write — creates or updates a file with **exact** content, without AI reasoning.
+        Ideal for cases when you already have full file content ready.
+        
+        📌 **DECISION RULE:**
+        - Use /update-file when you want to create or replace a file with known content  
+        - Use /execute when you need AI to reason, refactor, or generate code automatically
+        
+        ⚠️ **REQUIREMENTS:**
+        - Active project must be set (returns 400 if not)
+        - Both *path* and *content* fields are **REQUIRED**
+        - Relative paths are automatically prefixed with the active project directory
+        - Empty content ("") clears the file (use /execute for file deletion)
+        
+        ⚠️ **REDIRECT BEHAVIOR:**
+        - Explicit natural-language edit commands targeting exact file content (e.g., "update file X with Y") are redirected here from /execute  
+        - Commands like "create file X with ..." or "replace file Y content with ..." are also handled here directly  
+        - This ensures safe, deterministic file updates without AI misinterpretation
+        
+        📦 **FORMAT:** {"path": "file.py", "content": "your code"}  
+        Optional plain-text body mode exists but is rarely needed. JSON format is recommended.  
+        File paths must be within the active project root for safety.
+        
+        🧪 **EXAMPLES:**
+        - {"path": "utils/logger.py", "content": "def log(): pass"}  
+        - {"path": "config.json", "content": "{\"debug\": true}"}  
+        - {"path": "data/cache.tmp", "content": ""}   # Clears file content
+        
+        🧭 **NOTES:**
+        - Returns HTTP 200 on success, 400 on invalid path/missing parameters, 403 on protected directories
+        - Does not perform refactoring or AI-driven edits (use /execute for that)  
+        - Fully integrated with CPL redirection layer for safe file handling
+      operationId: updateFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["path", "content"]
+              properties:
+                path:
+                  type: string
+                  description: File path (relative paths auto-prefixed with active project)
+                  example: "test.py"
+                content:
+                  type: string
+                  description: Exact file content to write (empty string '' clears file)
+                  example: "def hello(): print('world')"
+          text/plain:
+            schema:
+              type: string
+              example: "projects/LazyDeve/README.md"
+      responses:
+        "200":
+          description: File updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        "400":
+          description: Invalid request (missing path/content or inactive project)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: Protected directory access denied (core/, api/, utils/)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /commit:
+    post:
+      summary: Commit current project changes
+      operationId: commitChanges
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  example: "chore: update agent logic"
+          text/plain:
+            schema:
+              type: string
+              example: "chore: update agent logic"
+      responses:
+        "200":
+          description: Commit successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /set-llm:
+    post:
+      summary: Change active LLM provider
+      operationId: setLLM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                  enum: [openai, anthropic, gemini, mistral]
+      responses:
+        "200":
+          description: Provider switched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /llm-info:
+    get:
+      summary: Get current LLM info
+      operationId: getLLMInfo
+      responses:
+        "200":
+          description: Current LLM provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+
+  /projects/list:
+    get:
+      summary: List all available projects
+      description: Returns list of all projects. Each has own directory, memory, and context.
+      operationId: listProjects
+      responses:
+        "200":
+          description: List of project names
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  projects:
+                    type: array
+                    items:
+                      type: string
+                    example: ["LazyDeve", "WebBuilder", "TestProject"]
+
+  /projects/active:
+    get:
+      summary: Get currently active project and full unified context
+      description: >
+        Returns active project name and full unified context structure (context_full.json format).
+        All /execute commands target this project.
+        
+        ✅ TASK 8.9.3: Automatically includes project context (README + memory)
+        ✅ TASK 8.10.1.2: Returns full unified context structure (not summary format)
+        
+        **Full unified context includes:**
+        - Core metadata: project_name, description, tech_stack, recent_focus, keywords, confidence
+        - README: preview (configurable via config.json["readme_chars"], default: 1400 chars), last_updated, checksum
+        - Commits: last_commit (with commit_id, summary, files_changed, file_contexts), recent commits history
+        - Activity: total_actions, recent_focus, common_operations, error_patterns, recent_actions
+        - Snapshot: last_run, status, pending_changes
+        - Config: project configuration including user_memory, commit_history settings
+        - Stats: project statistics
+        - User memory: notes (max 300 chars), last_updated
+        
+        This is the complete unified context structure that ChatGPT receives for full project awareness.
+        Best practice: call periodically in long conversations to maintain context awareness.
+      operationId: getActiveProject
+      responses:
+        "200":
+          description: Active project name and full unified context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active_project:
+                    type: string
+                    nullable: true
+                    example: "LazyDeve"
+                    description: Active project name (null if no project set)
+                  context:
+                    type: object
+                    nullable: true
+                    description: Full unified context structure (context_full.json format, optional, only if project is active)
+                    additionalProperties: true
+                    properties:
+                      version:
+                        type: string
+                        description: Context structure version
+                      generated_at:
+                        type: string
+                        format: date-time
+                        description: When context was generated
+                      project_name:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      tech_stack:
+                        type: array
+                        items:
+                          type: string
+                      recent_focus:
+                        type: string
+                        nullable: true
+                      keywords:
+                        type: array
+                        items:
+                          type: string
+                      confidence:
+                        type: number
+                      readme:
+                        type: object
+                        description: README information
+                        properties:
+                          preview:
+                            type: string
+                            nullable: true
+                            description: "README preview (configurable via config.json, default: 1400 chars)"
+                          last_updated:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          checksum:
+                            type: string
+                            nullable: true
+                      commits:
+                        type: object
+                        description: Commit history
+                        properties:
+                          last_commit:
+                            type: object
+                            nullable: true
+                          recent:
+                            type: array
+                            items:
+                              type: object
+                      activity:
+                        type: object
+                        description: Project activity summary
+                        properties:
+                          total_actions:
+                            type: integer
+                          recent_focus:
+                            type: string
+                            nullable: true
+                          common_operations:
+                            type: array
+                            items:
+                              type: string
+                          error_patterns:
+                            type: array
+                            items:
+                              type: string
+                          recent_actions:
+                            type: array
+                            items:
+                              type: object
+                      snapshot:
+                        type: object
+                        description: Project state snapshot
+                        properties:
+                          last_run:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          status:
+                            type: string
+                          pending_changes:
+                            type: boolean
+                      config:
+                        type: object
+                        description: Project configuration
+                        additionalProperties: true
+                      stats:
+                        type: object
+                        description: Project statistics
+                        additionalProperties: true
+                      user_memory:
+                        type: object
+                        nullable: true
+                        description: User memory notes
+                        properties:
+                          notes:
+                            type: string
+                            nullable: true
+                          last_updated:
+                            type: string
+                            format: date-time
+                            nullable: true
+
+  /projects/create/{name}:
+    post:
+      summary: Create a new project with proper structure
+      description: >
+        Creates project directory with README.md, src/, tests/, docs/, .lazydeve/.
+        Auto-syncs to GitHub. Sets as active project. ALWAYS use this for project creation, NOT /execute.
+      operationId: createProject
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Project name (alphanumeric, underscores, hyphens only)
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9_-]+$'
+          example: "MyNewProject"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+                  description: Project description
+                  example: "REST API for user management"
+                language:
+                  type: string
+                  description: Primary programming language
+                  example: "python"
+                  enum: ["python", "javascript", "typescript", "java", "go", "rust", "generic"]
+      responses:
+        "200":
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: created
+                  message:
+                    type: string
+                  project_name:
+                    type: string
+                  sync_status:
+                    type: string
+                    enum: ["synced", "disabled", "error"]
+
+  /projects/set-active/{name}:
+    post:
+      summary: Switch to a different project and get full unified context
+      description: >
+        Changes active project context. All subsequent /execute commands target this project.
+        Use when user says "switch to" or "work on" a different project.
+        
+        ✅ TASK 8.9.3: Automatically returns project context after activation
+        ✅ TASK 8.10.1.2: Returns full unified context structure (context_full.json format)
+        
+        **Full unified context includes:**
+        - Core metadata: project_name, description, tech_stack, recent_focus, keywords, confidence
+        - README: preview (configurable via config.json["readme_chars"], default: 1400 chars), last_updated, checksum
+        - Commits: last_commit (with commit_id, summary, files_changed, file_contexts), recent commits history
+        - Activity: total_actions, recent_focus, common_operations, error_patterns, recent_actions
+        - Snapshot: last_run, status, pending_changes
+        - Config: project configuration including user_memory, commit_history settings
+        - Stats: project statistics
+        - User memory: notes (max 300 chars), last_updated
+      operationId: setActiveProject
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Project name to activate
+          schema:
+            type: string
+          example: "WebBuilder"
+      responses:
+        "200":
+          description: Project activated with context
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  active_project:
+                    type: string
+                    example: "WebBuilder"
+                  context:
+                    type: object
+                    nullable: true
+                    description: Full unified context structure (context_full.json format, optional, only if activation successful)
+                    additionalProperties: true
+                    properties:
+                      version:
+                        type: string
+                      generated_at:
+                        type: string
+                        format: date-time
+                      project_name:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      tech_stack:
+                        type: array
+                        items:
+                          type: string
+                      recent_focus:
+                        type: string
+                        nullable: true
+                      keywords:
+                        type: array
+                        items:
+                          type: string
+                      confidence:
+                        type: number
+                      readme:
+                        type: object
+                        properties:
+                          preview:
+                            type: string
+                            nullable: true
+                          last_updated:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          checksum:
+                            type: string
+                            nullable: true
+                      commits:
+                        type: object
+                        properties:
+                          last_commit:
+                            type: object
+                            nullable: true
+                          recent:
+                            type: array
+                            items:
+                              type: object
+                      activity:
+                        type: object
+                        properties:
+                          total_actions:
+                            type: integer
+                          recent_focus:
+                            type: string
+                            nullable: true
+                          common_operations:
+                            type: array
+                            items:
+                              type: string
+                          error_patterns:
+                            type: array
+                            items:
+                              type: string
+                          recent_actions:
+                            type: array
+                            items:
+                              type: object
+                      snapshot:
+                        type: object
+                        properties:
+                          last_run:
+                            type: string
+                            format: date-time
+                            nullable: true
+                          status:
+                            type: string
+                          pending_changes:
+                            type: boolean
+                      config:
+                        type: object
+                        additionalProperties: true
+                      stats:
+                        type: object
+                        additionalProperties: true
+                      user_memory:
+                        type: object
+                        nullable: true
+                        properties:
+                          notes:
+                            type: string
+                            nullable: true
+                          last_updated:
+                            type: string
+                            format: date-time
+                            nullable: true
+
+  /projects/info/{name}:
+    get:
+      summary: Get detailed project information
+      description: Returns project metadata including file count, active status, and directory path.
+      operationId: getProjectInfo
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Project name
+          schema:
+            type: string
+          example: "LazyDeve"
+      responses:
+        "200":
+          description: Project information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  info:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      path:
+                        type: string
+                      is_active:
+                        type: boolean
+                  files:
+                    type: integer
+
+  /api/v1/context/summary/{project_name}:
+    get:
+      summary: Get project context summary (with README preview)
+      description: |
+        Retrieves AI-ready context summary for a project, including:
+        - Project description and tech stack
+        - Recent focus areas
+        - README preview (first 500 characters)
+        - Confidence score
+        
+        ✅ TASK 8.9.1: Exposes Task 8.9 context functionality
+      operationId: getSummaryContext
+      parameters:
+        - name: project_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the project
+          example: "Project_test_2"
+      responses:
+        "200":
+          description: Context summary with README preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_name:
+                    type: string
+                  description:
+                    type: string
+                  tech_stack:
+                    type: array
+                    items:
+                      type: string
+                  recent_focus:
+                    type: string
+                  readme_preview:
+                    type: string
+                    description: First 500 characters of README
+                  confidence:
+                    type: number
+                  cached:
+                    type: boolean
+
+  /api/v1/context/detailed/{project_name}:
+    get:
+      summary: Get detailed project context (with full README content)
+      description: |
+        Retrieves detailed AI context for a project, including:
+        - Full project description
+        - Tech stack and keywords
+        - Activity summary (total actions, common operations, error patterns)
+        - README content (up to 2000 characters)
+        - AI-generated suggestions
+        
+        ✅ TASK 8.9.1: Exposes Task 8.9 context functionality
+      operationId: getDetailedContext
+      parameters:
+        - name: project_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the project
+          example: "Project_test_2"
+      responses:
+        "200":
+          description: Detailed context with README content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_name:
+                    type: string
+                  description:
+                    type: string
+                  tech_stack:
+                    type: array
+                    items:
+                      type: string
+                  keywords:
+                    type: array
+                    items:
+                      type: string
+                  activity:
+                    type: object
+                    properties:
+                      total_actions:
+                        type: integer
+                      recent_focus:
+                        type: string
+                      common_operations:
+                        type: array
+                        items:
+                          type: string
+                      error_patterns:
+                        type: array
+                        items:
+                          type: string
+                  readme_content:
+                    type: string
+                    description: Up to 2000 characters of README
+                  confidence:
+                    type: number
+                  suggestions:
+                    type: array
+                    items:
+                      type: string
+                  cached:
+                    type: boolean
+
+  /api/v1/context/llm/{project_name}:
+    get:
+      summary: Get LLM-optimized context (README prepended to context_string)
+      description: |
+        Retrieves LLM-optimized context for a project, designed for LLM selector and Aider prompts.
+        
+        Key feature: README is prepended at the top of context_string for maximum visibility.
+        
+        Returns:
+        - context_string (README + project description + tech stack + recent focus + error patterns)
+        - Separate readme_content field (up to 2000 characters)
+        - Tech stack, description, recent focus, error patterns
+        - AI-generated suggestions
+        
+        ✅ TASK 8.9.1: Exposes Task 8.9 context functionality
+      operationId: getLLMContext
+      parameters:
+        - name: project_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the project
+          example: "Project_test_2"
+      responses:
+        "200":
+          description: LLM-optimized context with README in context_string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_name:
+                    type: string
+                  context_string:
+                    type: string
+                    description: README prepended + project data (for LLM consumption)
+                  tech_stack:
+                    type: array
+                    items:
+                      type: string
+                  description:
+                    type: string
+                  recent_focus:
+                    type: string
+                  error_patterns:
+                    type: array
+                    items:
+                      type: string
+                  readme_content:
+                    type: string
+                    description: Up to 2000 characters of README (separate field)
+                  confidence:
+                    type: number
+                  suggestions:
+                    type: array
+                    items:
+                      type: string
+                  cached:
+                    type: boolean
+
+  /api/v1/context/full/{project_name}:
+    get:
+      summary: Get unified full context (context_full.json structure)
+      description: |
+        Retrieves the complete unified context structure (context_full.json format) for a project.
+        This is the single source of truth that merges all memory sources into one structure.
+        
+        **Returns complete unified context including:**
+        - Core metadata: project_name, description, tech_stack, recent_focus, keywords, confidence
+        - README: preview (configurable via config.json["readme_chars"], default: 1400 chars), last_updated, checksum
+        - Commits: last_commit (with commit_id, summary, files_changed, file_contexts), recent commits history
+        - Activity: total_actions, recent_focus, common_operations, error_patterns, recent_actions
+        - Snapshot: last_run, status, pending_changes
+        - Config: project configuration including user_memory, commit_history settings
+        - Stats: project statistics
+        - User memory: notes (max 300 chars), last_updated
+        
+        ✅ TASK 8.10.1.1: Unified context endpoint
+        ✅ TASK 8.10.1.2: Single source of truth for all context data
+        
+        **Use cases:**
+        - Get complete project state for ChatGPT initialization
+        - Access all memory sources in one request
+        - Manual inspection of unified context structure
+        - MCP server integration (Task 10)
+      operationId: getFullContext
+      parameters:
+        - name: project_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the project
+          example: "test_project_task_8_10_1_1"
+      responses:
+        "200":
+          description: Complete unified context structure (context_full.json format)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                description: Full unified context structure with all memory sources merged
+                properties:
+                  version:
+                    type: string
+                    example: "1.0"
+                  generated_at:
+                    type: string
+                    format: date-time
+                  project_name:
+                    type: string
+                  description:
+                    type: string
+                    nullable: true
+                  tech_stack:
+                    type: array
+                    items:
+                      type: string
+                  recent_focus:
+                    type: string
+                    nullable: true
+                  keywords:
+                    type: array
+                    items:
+                      type: string
+                  confidence:
+                    type: number
+                  readme:
+                    type: object
+                    properties:
+                      preview:
+                        type: string
+                        nullable: true
+                        description: "README preview (configurable via config.json, default: 1400 chars)"
+                      last_updated:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      checksum:
+                        type: string
+                        nullable: true
+                  commits:
+                    type: object
+                    properties:
+                      last_commit:
+                        type: object
+                        nullable: true
+                      recent:
+                        type: array
+                        items:
+                          type: object
+                  activity:
+                    type: object
+                    properties:
+                      total_actions:
+                        type: integer
+                      recent_focus:
+                        type: string
+                        nullable: true
+                      common_operations:
+                        type: array
+                        items:
+                          type: string
+                      error_patterns:
+                        type: array
+                        items:
+                          type: string
+                      recent_actions:
+                        type: array
+                        items:
+                          type: object
+                  snapshot:
+                    type: object
+                    properties:
+                      last_run:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      status:
+                        type: string
+                      pending_changes:
+                        type: boolean
+                  config:
+                    type: object
+                    additionalProperties: true
+                  stats:
+                    type: object
+                    additionalProperties: true
+                  user_memory:
+                    type: object
+                    nullable: true
+                    properties:
+                      notes:
+                        type: string
+                        nullable: true
+                      last_updated:
+                        type: string
+                        format: date-time
+                        nullable: true
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/context/{project_name}/user-memory:
+    post:
+      summary: "Add or update project rules and notes"
+      description: |
+        Adds or updates project rules and notes (≤300 chars) in the project's persistent memory.
+        Can include:
+        - Project-specific rules (e.g., "Always use TypeScript", "No console.log in production")
+        - Development guidelines and best practices
+        - Important reminders and context hints
+        
+        Notes are stored in `.lazydeve/config.json` and included in `context_full.json` for unified context.
+        
+        ✅ TASK 8.10.1.1: User memory endpoint
+        ✅ MCP-ready: Direct endpoint for MCP server integration (Task 10)
+      operationId: write_user_memory
+      x-openai-triggers:
+        - "add note"
+        - "remember this"
+        - "save to memory"
+        - "add project note"
+        - "update context memory"
+      parameters:
+        - name: project_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the project
+          example: "test_project"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - notes
+              properties:
+                notes:
+                  type: string
+                  maxLength: 300
+                  description: Project rules and notes (max 300 chars, automatically truncated). Can include project-specific rules, guidelines, reminders, or context hints.
+                  example: "Always use TypeScript. No console.log in production. Focus on memory optimization."
+      responses:
+        "200":
+          description: User note saved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "User notes updated for test_project"
+                  notes:
+                    type: string
+                    description: Saved note text (truncated to 300 chars)
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/projects/{project_name}/memory:
+    get:
+      summary: Get complete project memory
+      description: |
+        Retrieves the complete project memory including semantic context, actions history, and documentation metadata.
+        Returns the full memory.json structure for the project.
+      operationId: getProjectMemory
+      parameters:
+        - name: project_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the project
+          example: "test_project"
+      responses:
+        "200":
+          description: Complete project memory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/projects/{project_name}/memory/update:
+    post:
+      summary: Trigger semantic analysis and update memory context
+      description: |
+        Triggers semantic analysis of the project and updates the memory context.
+        Uses change-based detection (no time cooldown) - runs if semantic context is empty/null or if actions increased by 10+.
+        
+        ✅ TASK 8.10.1.3: Change-based check (no time cooldown)
+      operationId: updateProjectMemory
+      parameters:
+        - name: project_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the project
+          example: "test_project"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force_reanalysis:
+                  type: boolean
+                  default: false
+                  description: Force re-analysis even if recently analyzed
+      responses:
+        "200":
+          description: Memory update result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/projects/{project_name}/memory/context:
+    get:
+      summary: "[DEPRECATED] Get AI-ready context summary"
+      description: |
+        ⚠️ **DEPRECATED**: This endpoint is deprecated. Use `/api/v1/context/{format}/{project_name}` instead:
+        - `/api/v1/context/summary/{project_name}` for summary format
+        - `/api/v1/context/detailed/{project_name}` for detailed format
+        - `/api/v1/context/llm/{project_name}` for LLM format
+        
+        This endpoint will be removed in a future version.
+      operationId: getAIContext
+      deprecated: true
+      parameters:
+        - name: project_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the project
+          example: "test_project"
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [summary, detailed, llm]
+            default: summary
+          description: Context format
+      responses:
+        "200":
+          description: AI-ready context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        "404":
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/context/debug/{project_name}:
+    get:
+      summary: Debug context cache and README loading status
+      description: |
+        Provides visibility into context cache state, README loading status, and encoding information.
+        Use this tool to diagnose context injection issues.
+        
+        ✅ TASK 8.9.2: Debug endpoint for troubleshooting
+      operationId: getContextDebug
+      parameters:
+        - name: project_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the project
+          example: "Project_test_2"
+      responses:
+        "200":
+          description: Debug information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project_name:
+                    type: string
+                  readme_status:
+                    type: object
+                    properties:
+                      loaded:
+                        type: boolean
+                      length:
+                        type: integer
+                      corrupted_chars:
+                        type: integer
+                      corruption_percent:
+                        type: number
+                      has_content:
+                        type: boolean
+                  memory_status:
+                    type: object
+                    properties:
+                      exists:
+                        type: boolean
+                      has_semantic_context:
+                        type: boolean
+                  cache_status:
+                    type: object
+                    additionalProperties: true
+
+security:
+  - BearerAuth: []
+
+

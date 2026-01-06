@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Logs
+logs/
+*.log
+
+# Archives and large files
+archive_files/
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+
+# IDE
+.vscode/
+.cursor/
+.cursorignore
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+# Projects (each project has its own Git repo)
+# Ignore everything in /projects entirely - each project has its own .git
+
+/projects/
+
+
+# Aider internal files
+.aider.*
+.aider.tags.cache.v4/
+
+# Logs
+logs/agent.log
+
+.env
+.env.local*

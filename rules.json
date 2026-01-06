@@ -1,0 +1,153 @@
+{
+    "default": {
+      "create_logs_dir": true,
+      "insert_logging_block": true,
+      "commit_format": {
+        "enabled": true,
+        "format": "[LazyDeve] <type>: <short summary>",
+        "types": ["feat", "fix", "refactor", "docs", "test", "chore"],
+        "max_summary_length": 100,
+        "auto_correct": true,
+        "validation": true
+      }
+    },
+    "project_defaults": {
+      "create_src_dir": true,
+      "create_logs_dir": true,
+      "include_readme": true,
+      "include_memory_file": true,
+      "include_init_py": true,
+      "create_log_files": true,
+      "default_description": "New LazyDeve Project initialized automatically.",
+      "auto_activate_after_creation": true,
+      "log_files": ["actions.log", "errors.log"],
+      "readme_sections": ["Structure", "Project Info"],
+      "memory_template": {
+        "context_summary": {
+          "description": "Auto-generated project memory context.",
+          "stack": [],
+          "keywords": []
+        },
+        "stats": {
+          "commits": 0,
+          "logs": 0,
+          "file_count": 0
+        }
+      }
+    },
+    "commit_format": {
+      "template": "[LazyDeve] <type>: <short summary>\n<optional extended context>",
+      "examples": [
+        "[LazyDeve] feat: implemented auto memory sync for GitHub context",
+        "[LazyDeve] fix: resolved agent initialization timeout issue",
+        "[LazyDeve] refactor: modularized core functionality into separate files",
+        "[LazyDeve] docs: updated README with new architecture details",
+        "[LazyDeve] test: added unit tests for GitHub sync functionality",
+        "[LazyDeve] chore: updated dependencies and cleaned up archive files"
+      ],
+      "type_descriptions": {
+        "feat": "A new feature or functionality",
+        "fix": "A bug fix or issue resolution",
+        "refactor": "Code refactoring without changing functionality",
+        "docs": "Documentation changes or updates",
+        "test": "Adding or updating tests",
+        "chore": "Maintenance tasks, dependency updates, cleanup"
+      },
+      "validation_rules": {
+        "require_prefix": true,
+        "require_type": true,
+        "require_summary": true,
+        "max_summary_length": 100,
+        "allow_extended_context": true,
+        "enforce_english_only": true
+      }
+    },
+    "logging_block": [
+      "import logging, os",
+      "os.makedirs('logs', exist_ok=True)",
+      "logging.basicConfig(",
+      "    filename='logs/run.log',",
+      "    filemode='a',",
+      "    format='%(asctime)s [%(levelname)s] %(message)s',",
+      "    level=logging.INFO,",
+      "    encoding='utf-8'",
+      ")"
+    ],
+    "architecture": {
+      "components": [
+        "GPT: Project architect analyzing structure and formulating tasks.",
+        "FastAPI Agent: Bridge between GPT and Aider managing task execution.",
+        "Aider CLI: Executes tasks, creates and edits files, performs git operations.",
+        "GitHub: Long-term memory and source of truth.",
+        "ngrok: Secure tunnel for external access and webhook integration.",
+        "Web UI: User-friendly interface for task management."
+      ],
+      "loop_cycle": "GPT → FastAPI Agent → Aider → GitHub → GPT updates architecture"
+    },
+    "file_naming_rules": {
+      "test_files": {
+        "prefix": "Test_",
+        "description": "All test files must start with the prefix Test_"
+      }
+    },
+    "core_protection_rules": {
+      "restricted_directories": [
+        "core/",
+        "projects/",
+        "C:\\Users\\LENOVO\\Desktop\\Python\\LazyDeve\\core",
+        "C:\\Users\\LENOVO\\Desktop\\Python\\LazyDeve\\projects"
+      ],
+      "protected_root_files": [
+        "main.py",
+        "agent.py",
+        "requirements.txt",
+        "README.md",
+        "rules.json",
+        "openai.yaml",
+        "openai_full_schema.yaml",
+        "tasks.md",
+        ".env",
+        ".gitignore",
+        "Dockerfile",
+        "docker-compose.yml"
+      ],
+      "protected_root_directories": [
+        "core/",
+        "docs/",
+        "logs/",
+        "tests/",
+        "archive_files/"
+      ],
+      "protected_file_extensions": [
+        ".py",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".md",
+        ".txt",
+        ".env"
+      ],
+      "enforced": true,
+      "backup_enabled": true,
+      "audit_logging": true,
+      "project_context_required": true,
+      "description": "Comprehensive protection rules for core/root files and directories"
+    },
+    "agent_rules": {
+      "auto_commit": true,
+      "auto_push": true,
+      "auto_sync": true,
+      "context_awareness": true,
+      "allow_github_access": true,
+      "allow_webhook_notify": true,
+      "project_memory_sync": true,
+      "intro_message_enabled": true,
+      "post_update_summary": true,
+      "post_update_notifier": true,
+      "auto_state_refresh": true
+    },
+    "utf8_validation": {
+      "enabled": true,
+      "description": "Prints a UTF-8 validation string to confirm output handling."
+    }
+}
