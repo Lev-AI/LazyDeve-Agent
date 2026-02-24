@@ -13,6 +13,7 @@ Git integration, and a closed-loop development workflow.
 
 ---
 
+
 **LazyDeve** is not an IDE plugin and not a “stateless chat assistant”.  
 It was created as an engineering experiment and evolved into a **stateful development agent** that can **plan, execute, verify, and iterate** on a real codebase — while preserving **project context as structured, inspectable artifacts**.
 The architecture is modular by design, making it easy to adapt to different workflows and user needs.
@@ -25,6 +26,31 @@ LazyDeve exists to reduce that intent → implementation drift by turning develo
 
 ---
 
+
+## 🧪 Architectural Experiment
+
+**An experiment in turning ChatGPT into a deterministic, stateful and auditable software engineer.**
+
+Core roles:
+
+* **GPT — brain**
+* **LazyDeve — discipline**
+* **Aider — executor**
+* **Git — truth**
+* **Memory — context**
+
+---
+
+## 🧩 System Diagram
+
+```
+User → ChatGPT (Orchestrator) → LazyDeve (State + Memory + Control) → Aider (Code Executor) → Git (Truth)
+                                        ↑
+                               Memory (JSON / SQLite)
+```
+
+
+---
 ## 💡 Concept
 
 LazyDeve is designed as a **development loop**, not a chat:
